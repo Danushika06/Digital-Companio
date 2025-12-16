@@ -7,7 +7,8 @@ import models, schemas, auth
 from database import engine, get_db
 from redis_client import (
     get_chat_history, add_message, get_redis_client,
-    create_chat, get_user_chats, delete_chat_session, update_chat_title
+    create_chat, get_user_chats, delete_chat_session, update_chat_title,
+    get_user_profile, update_user_profile
 )
 from gemini_client import get_ai_response, generate_chat_title
 
@@ -76,7 +77,10 @@ def read_root():
 def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
     existing_user = db.query(models.User).filter(models.User.email == user.email).first()
     if existing_user:
-        raise HTTPException(status_code=400, detail="Email already registered")
+        raise HTTPException(
+            status_code=400, 
+            detail="A user with this email already exists."
+        )
     
     hashed_password = auth.get_password_hash(user.password)
     new_user = models.User(
@@ -91,11 +95,20 @@ def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
 
 @app.post("/token", response_model=schemas.Token)
 def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    # Note: form_data.username maps to email in our frontend
     user = db.query(models.User).filter(models.User.email == form_data.username).first()
-    if not user or not auth.verify_password(form_data.password, user.hashed_password):
+    
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
+            detail="User with this email does not exist.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    if not auth.verify_password(form_data.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect password provided.",
             headers={"WWW-Authenticate": "Bearer"},
         )
     
@@ -137,14 +150,18 @@ def delete_chat_endpoint(
     delete_chat_session(user_id, chat_id)
     return {"status": "deleted"}
 
+@app.get("/users/me/profile")
+def get_user_profile_endpoint(current_user: models.User = Depends(auth.get_current_user)):
+    user_id = str(current_user.id)
+    profile = get_user_profile(user_id)
+    # Parse the newline separated string into a list for easier frontend display
+    facts = [line.strip() for line in profile.split('\n') if line.strip()] if profile else []
+    return {"profile_text": profile, "facts": facts}
+
 
 # ----------------------------
 # Chat Interaction Routes
 # ----------------------------
-
-
-
-
 
 @app.post("/chat", response_model=schemas.ChatResponse)
 def chat_endpoint(
@@ -155,17 +172,36 @@ def chat_endpoint(
     chat_id = request.chat_id
     user_message = request.message
     
+    # 0. Get User Profile Context
+    user_profile = get_user_profile(user_id)
+
     # 1. Get History (for specific chat)
     history = get_chat_history(chat_id)
     
-    # 2. Get AI Response
-    ai_text, title_from_ai = get_ai_response(history, user_message)
+    # 2. Get AI Response (with profile context)
+    ai_text, title_from_ai, new_facts = get_ai_response(history, user_message, user_profile)
     
     # 3. Save Context
     add_message(chat_id, "user", user_message)
     add_message(chat_id, "model", ai_text)
     
+    # 3.5 Update Profile (Directly from response)
+    if new_facts:
+        print(f"📝 Learning new facts about user {user_id}: {new_facts}")
+        # Append new facts to existing profile
+        updated_profile = user_profile + "\n" + new_facts if user_profile else new_facts
+        update_user_profile(user_id, updated_profile)
+
     # 4. Generate Title (if it's the first message)
+    new_title = None
+    if len(history) == 0:
+        if title_from_ai:
+             new_title = title_from_ai
+        else:
+             # Fallback to local fast generation if AI didn't provide one
+             new_title = generate_chat_title(user_message)
+        
+        update_chat_title(user_id, chat_id, new_title)
     new_title = None
     if len(history) == 0:
         if title_from_ai:

@@ -18,6 +18,7 @@ export default function Login() {
         try {
             const data = await login(email, password);
             localStorage.setItem('token', data.access_token);
+            localStorage.setItem('loginSuccess', 'true');
             navigate('/');
         } catch (err: any) {
             setError(err.response?.data?.detail || 'Login failed');

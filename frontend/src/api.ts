@@ -16,9 +16,14 @@ axios.interceptors.request.use(
 axios.interceptors.response.use(
     (response) => response,
     (error) => {
+        // Prevent redirect loop if we are already on login or register page
+        // and allow the component to handle the specific 401 error message.
         if (error.response?.status === 401) {
-            localStorage.removeItem('token');
-            window.location.href = '/login';
+            const currentPath = window.location.pathname;
+            if (currentPath !== '/login' && currentPath !== '/register') {
+                localStorage.removeItem('token');
+                window.location.href = '/login';
+            }
         }
         return Promise.reject(error);
     }
@@ -57,6 +62,11 @@ export const register = async (email: string, password: string, fullName: string
 export const getMe = async () => {
     const response = await axios.get(`${API_URL}/users/me`);
     return response.data;
+}
+
+export const getProfile = async () => {
+    const response = await axios.get(`${API_URL}/users/me/profile`);
+    return response.data; // { profile_text: string, facts: string[] }
 }
 
 // --- Chat Management ---

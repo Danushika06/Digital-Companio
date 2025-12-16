@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-route
 import { Trash2, PlusCircle, MessageSquare, Send, User, Bot, Loader2, Sparkles, LogOut, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { motion, AnimatePresence } from 'framer-motion';
-import { sendMessage, getHistory, getMe, getChats, createChat, deleteChat, ChatSession } from './api';
+import { sendMessage, getHistory, getMe, getChats, createChat, deleteChat, ChatSession, getProfile } from './api';
 import './index.css';
 
 import Login from './pages/Login';
@@ -15,7 +15,170 @@ interface Message {
     content: string;
 }
 
-// Check auth wrapper
+
+// Simple Toast Component
+function Toast({ message, onClose }: { message: string, onClose: () => void }) {
+    useEffect(() => {
+        const timer = setTimeout(onClose, 3000);
+        return () => clearTimeout(timer);
+    }, [onClose]);
+
+    return (
+        <AnimatePresence>
+            <motion.div
+                initial={{ opacity: 0, y: -20, x: '-50%' }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="fixed top-6 left-1/2 -translate-x-1/2 z-50 bg-green-500/90 backdrop-blur text-white px-6 py-3 rounded-full shadow-xl flex items-center gap-3 font-medium text-sm"
+            >
+                <Sparkles className="w-4 h-4" />
+                <span>{message}</span>
+            </motion.div>
+        </AnimatePresence>
+    );
+}
+
+// Profile Memory Modal
+function ProfileModal({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) {
+    const [facts, setFacts] = useState<string[]>([]);
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        if (isOpen) {
+            loadProfile();
+        }
+    }, [isOpen]);
+
+    const loadProfile = async () => {
+        setLoading(true);
+        try {
+            const data = await getProfile();
+            setFacts(data.facts);
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    if (!isOpen) return null;
+
+    return (
+        <AnimatePresence>
+            <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+                onClick={onClose}
+            >
+                <motion.div
+                    initial={{ scale: 0.95, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.95, opacity: 0 }}
+                    className="bg-surface border border-border w-full max-w-md rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]"
+                    onClick={e => e.stopPropagation()}
+                >
+                    <div className="p-6 border-b border-border">
+                        <div className="flex items-center gap-3 mb-1">
+                            <div className="p-2 bg-primary/10 rounded-lg text-primary">
+                                <User className="w-5 h-5" />
+                            </div>
+                            <h3 className="text-lg font-semibold text-text">Memory & Personalization</h3>
+                        </div>
+                        <p className="text-sm text-muted">What Lumina has learned about you to provide better assistance.</p>
+                    </div>
+
+                    <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
+                        {loading ? (
+                            <div className="flex flex-col items-center justify-center py-8 text-muted">
+                                <Loader2 className="w-8 h-8 animate-spin mb-2" />
+                                <p className="text-sm">Accessing memory banks...</p>
+                            </div>
+                        ) : facts.length > 0 ? (
+                            <ul className="space-y-3">
+                                {facts.map((fact, index) => (
+                                    <motion.li
+                                        key={index}
+                                        initial={{ opacity: 0, x: -10 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        transition={{ delay: index * 0.05 }}
+                                        className="flex gap-3 text-sm text-text bg-input/50 p-3 rounded-lg border border-border/50"
+                                    >
+                                        <div className="w-1.5 h-1.5 rounded-full bg-secondary mt-1.5 flex-shrink-0" />
+                                        <span>{fact}</span>
+                                    </motion.li>
+                                ))}
+                            </ul>
+                        ) : (
+                            <div className="text-center py-8 text-muted">
+                                <p>Lumina hasn't learned any specific facts about you yet.</p>
+                                <p className="text-xs mt-2">Chat more to build your personalized profile!</p>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="bg-input/30 px-6 py-4 flex justify-end border-t border-border">
+                        <button
+                            onClick={onClose}
+                            className="px-4 py-2 text-sm font-medium text-text hover:bg-input rounded-lg transition-colors"
+                        >
+                            Close
+                        </button>
+                    </div>
+                </motion.div>
+            </motion.div>
+        </AnimatePresence>
+    );
+}
+
+// Confirmation Modal Component
+function ConfirmationModal({ isOpen, onClose, onConfirm, title, message }: { isOpen: boolean, onClose: () => void, onConfirm: () => void, title: string, message: string }) {
+    if (!isOpen) return null;
+
+    return (
+        <AnimatePresence>
+            <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+                onClick={onClose}
+            >
+                <motion.div
+                    initial={{ scale: 0.95, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0.95, opacity: 0 }}
+                    className="bg-surface border border-border w-full max-w-sm rounded-xl shadow-2xl overflow-hidden"
+                    onClick={e => e.stopPropagation()}
+                >
+                    <div className="p-6">
+                        <h3 className="text-lg font-semibold text-text mb-2">{title}</h3>
+                        <p className="text-sm text-muted">{message}</p>
+                    </div>
+                    <div className="bg-input/50 px-6 py-4 flex justify-end gap-3">
+                        <button
+                            onClick={onClose}
+                            className="px-4 py-2 text-sm font-medium text-text hover:bg-input rounded-lg transition-colors"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            onClick={() => {
+                                onConfirm();
+                                onClose();
+                            }}
+                            className="px-4 py-2 text-sm font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors"
+                        >
+                            Delete
+                        </button>
+                    </div>
+                </motion.div>
+            </motion.div>
+        </AnimatePresence>
+    );
+}
+
 function ProtectedRoute({ children }: { children: JSX.Element }) {
     const token = localStorage.getItem('token');
     if (!token) {
@@ -32,9 +195,21 @@ function ChatInterface() {
     const [loading, setLoading] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [userData, setUserData] = useState<{ full_name: string } | null>(null);
+    const [showSuccessToast, setShowSuccessToast] = useState(false);
+    const [deleteId, setDeleteId] = useState<string | null>(null); // State for modal
+    const [showProfileModal, setShowProfileModal] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
     const navigate = useNavigate();
+
+    // Check for login success flag
+    useEffect(() => {
+        const justLoggedIn = localStorage.getItem('loginSuccess');
+        if (justLoggedIn) {
+            setShowSuccessToast(true);
+            localStorage.removeItem('loginSuccess');
+        }
+    }, []);
 
     // Auto-focus input when loading finishes (bot replies)
     useEffect(() => {
@@ -92,9 +267,15 @@ function ChatInterface() {
         setMessages([]);
     }
 
-    const handleDeleteChat = async (e: React.MouseEvent, id: string) => {
+    const handleDeleteClick = (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
-        if (!confirm("Are you sure you want to delete this chat?")) return;
+        setDeleteId(id);
+    }
+
+    const confirmDeleteChat = async () => {
+        if (!deleteId) return;
+        const id = deleteId;
+        setDeleteId(null);
 
         try {
             await deleteChat(id);
@@ -162,14 +343,38 @@ function ChatInterface() {
     };
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            handleSend();
+        if (e.key === 'Enter') {
+            if (!e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+            }
+            // Allow default behavior for Shift+Enter (new line)
         }
     };
 
+    const handleInputResize = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        setInput(e.target.value);
+        e.target.style.height = 'auto';
+        e.target.style.height = `${e.target.scrollHeight}px`;
+    }
+
     return (
         <div className="flex h-screen w-full bg-background text-text font-sans overflow-hidden">
+            {showSuccessToast && <Toast message="Welcome back! Ready to learn?" onClose={() => setShowSuccessToast(false)} />}
+
+            <ConfirmationModal
+                isOpen={!!deleteId}
+                onClose={() => setDeleteId(null)}
+                onConfirm={confirmDeleteChat}
+                title="Delete Chat"
+                message="Are you sure you want to delete this conversation? This action cannot be undone."
+            />
+
+            <ProfileModal
+                isOpen={showProfileModal}
+                onClose={() => setShowProfileModal(false)}
+            />
+
             {/* Sidebar */}
             <AnimatePresence mode="wait">
                 {sidebarOpen && (
@@ -206,8 +411,8 @@ function ChatInterface() {
                                     key={chat.id}
                                     onClick={() => selectChat(chat.id)}
                                     className={`group flex items-center justify-between p-3 rounded-lg cursor-pointer transition-all ${currentChatId === chat.id
-                                        ? 'bg-primary/10 text-primary border border-primary/20'
-                                        : 'hover:bg-input text-muted hover:text-text border border-transparent'
+                                        ? 'bg-primary/10 text-primary '
+                                        : 'hover:bg-input text-muted hover:text-text '
                                         }`}
                                 >
                                     <div className="flex items-center gap-3 truncate">
@@ -215,7 +420,7 @@ function ChatInterface() {
                                         <span className="truncate text-sm">{chat.title || 'Untitled Chat'}</span>
                                     </div>
                                     <button
-                                        onClick={(e) => handleDeleteChat(e, chat.id)}
+                                        onClick={(e) => handleDeleteClick(e, chat.id)}
                                         className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-500/20 hover:text-red-500 rounded transition-all"
                                     >
                                         <Trash2 className="w-3 h-3" />
@@ -225,14 +430,18 @@ function ChatInterface() {
                         </div>
 
                         <div className="p-4 border-t border-border dark:border-white/5 mt-auto">
-                            <div className="flex items-center gap-3 mb-4 px-2">
-                                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-primary to-secondary flex items-center justify-center text-white font-bold text-xs ring-2 ring-background">
+                            <button
+                                onClick={() => setShowProfileModal(true)}
+                                className="w-full flex items-center gap-3 mb-2 px-2 py-2 rounded-lg hover:bg-input transition-colors text-left group"
+                            >
+                                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-primary to-secondary flex items-center justify-center text-white font-bold text-xs ring-2 ring-background group-hover:ring-offset-2 transition-all">
                                     {userData?.full_name?.charAt(0) || 'U'}
                                 </div>
                                 <div className="flex-1 overflow-hidden">
-                                    <p className="text-sm font-medium truncate">{userData?.full_name}</p>
+                                    <p className="text-sm font-medium truncate text-text">{userData?.full_name}</p>
+                                    <p className="text-xs text-muted truncate">View Memory</p>
                                 </div>
-                            </div>
+                            </button>
                             <button onClick={handleLogout} className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-red-500/10 hover:text-red-400 transition-colors text-sm text-left text-muted">
                                 <LogOut className="w-4 h-4" />
                                 <span>Sign Out</span>
@@ -328,16 +537,19 @@ function ChatInterface() {
                     <div className="max-w-4xl mx-auto relative group">
                         <div className="absolute -inset-1 bg-gradient-to-r from-primary/50 to-secondary/50 rounded-xl opacity-10 group-hover:opacity-20 transition blur-lg"></div>
                         <div className="relative flex items-center bg-white dark:bg-zinc-800 rounded-xl border border-zinc-200 dark:border-none shadow-xl transition-all">
-                            <input
-                                ref={inputRef}
-                                type="text"
+                            <textarea
+                                // ref={inputRef} 
+                                // Ref needs to be cast to TextAreaElement now, but the original was InputElement. 
+                                // Ideally we update the ref type, but for now we can just use autoFocus logic differently or cast.
+                                ref={inputRef as any}
                                 value={input}
                                 autoFocus
-                                onChange={(e) => setInput(e.target.value)}
+                                onChange={handleInputResize}
                                 onKeyDown={handleKeyDown}
-                                placeholder="Ask anything about your studies..."
-                                className="flex-1 bg-transparent px-6 py-4 outline-none text-text placeholder-muted"
+                                placeholder="Ask anything about your studies... (Shift+Enter for new line)"
+                                className="flex-1 bg-transparent px-6 py-4 outline-none text-text placeholder-muted resize-none max-h-48 overflow-y-auto"
                                 disabled={loading}
+                                rows={1}
                             />
                             <button
                                 onClick={handleSend}

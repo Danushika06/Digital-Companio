@@ -56,20 +56,33 @@ Emotional and Personal Support Rules:
 - Do not provide medical, psychological, or professional diagnoses.
 
 Output Format Rules (Mandatory):
-- For the first user message of every new chat, generate both:
-  1. A concise chat title
-  2. The assistant's response
-- The title must be:
-  - 3 to 6 words long
-  - Title Case
-  - Based only on the user's first message
-  - Clear and descriptive
-- Return the output strictly in the following JSON format and nothing else:
+
+You must ALWAYS return a valid JSON object. No markdown formatting, no plain text outside the JSON.
+The JSON structure must be:
 
 {
-  "title": "<generated chat title>",
-  "response": "<full assistant response>"
+  "title": "...",          // Generate ONLY for the highly first message of a new chat. Otherwise null.
+  "response": "...",       // The assistant's natural language response to the user.
+  "new_user_facts": "..."  // Extract any NEW, PERMANENT facts about the user from THIS message (e.g., "User studies CS"). If none, use null.
 }
+
+Detailed Instructions:
+1. "title":
+   - 3-6 words, Title Case.
+   - Only for the very first user message.
+   - Set to null for all subsequent messages.
+
+2. "response":
+   - Your helpful, empathetic, and academic response.
+   - Use standard markdown (bold, bullets, code blocks) WITHIN this string.
+   - Ensure you escape special characters (like quotes) correctly for JSON.
+
+3. "new_user_facts":
+   - Analyze the CURRENT user message.
+   - specific facts? (e.g., "User is struggling with Arrays", "User's name is Deni").
+   - If found, return them as a concise string.
+   - If the message is generic ("hi", "thanks", "explain this"), return null.
+   - DO NOT repeat facts already in the "User Profile Context".
 
 Boundaries:
 - Do not shame, pressure, or compare students to others.
@@ -85,47 +98,50 @@ model = genai.GenerativeModel('gemini-2.5-flash', system_instruction=SYSTEM_INST
 import json
 import re
 
-def get_ai_response(history, user_message):
+def get_ai_response(history, user_message, user_profile=""):
     try:
-        # Optimization: Limit history to last 6 messages (3 turns)
-        trimmed_history = history[-6:] if len(history) > 6 else history
+        # Optimization: Limit history to last 10 messages (5 turns)
+        trimmed_history = history[-10:] if len(history) > 10 else history
+        
+        effective_message = user_message
+        if user_profile:
+             effective_message = f"User Profile Context:\n{user_profile}\n\nUser Query:\n{user_message}"
+
+        # We enforce JSON mode via prompt, but we can also use generation_config if needed. 
+        # For now, relying on the strong system prompt.
         chat = model.start_chat(history=trimmed_history)
         
-        response = chat.send_message(user_message)
-        text = response.text
+        response = chat.send_message(effective_message)
+        text = response.text.strip()
         
-        # Check if this is the first interaction (history was empty)
-        # We can infer it if the function returns JSON, or strictly check history arg.
-        # However, the prompt instruction says it returns JSON for the *first* message.
-        # Since 'history' here is the list passed from main.py *before* appending current message,
-        # if len(history) == 0, it is the first message.
-        
+        final_response = "I had trouble processing that. Please try again."
         extracted_title = None
-        final_response = text
+        new_facts = None
 
-        if len(history) == 0:
-            try:
-                # Attempt to parse JSON. It might be wrapped in ```json ... ```
-                # Clean up markdown code blocks if present
-                clean_text = text.strip()
-                if clean_text.startswith("```"):
-                    clean_text = re.sub(r"^```json\s*", "", clean_text)
-                    clean_text = re.sub(r"^```\s*", "", clean_text)
-                    clean_text = re.sub(r"```$", "", clean_text)
-                
-                data = json.loads(clean_text)
-                final_response = data.get("response", text)
-                extracted_title = data.get("title")
-            except Exception:
-                # If parsing fails, just use the raw text and no title (fallback will handle it)
-                print("Failed to parse JSON from first response. Using raw text.")
-                pass
+        try:
+             # Cleanup specific markdown code block common issues
+            clean_text = text
+            if "```" in clean_text:
+                clean_text = re.sub(r"^```json\s*", "", clean_text)
+                clean_text = re.sub(r"^```\s*", "", clean_text)
+                clean_text = re.sub(r"```$", "", clean_text)
+            
+            data = json.loads(clean_text)
+            
+            final_response = data.get("response", text)
+            extracted_title = data.get("title")
+            new_facts = data.get("new_user_facts")
 
-        return final_response, extracted_title
+        except json.JSONDecodeError:
+            # Fallback: if the model messed up and just returned text
+            print("JSON Parse Failed in get_ai_response. Raw text:", text[:100])
+            final_response = text
+
+        return final_response, extracted_title, new_facts
 
     except Exception as e:
         print(f"Error calling Gemini: {e}")
-        return "I'm having trouble connecting to my brain right now. Please check my API key or internet connection.", None
+        return "I'm having trouble connecting to my brain right now.", None, None
 
 def generate_chat_title(user_message):
     return user_message[:30] + "..." if len(user_message) > 30 else user_message

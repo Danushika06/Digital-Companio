@@ -11,7 +11,7 @@ REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 
 # Postgres
 POSTGRES_USER = os.getenv("POSTGRES_USER", "denistanb05")
-POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "Denis@123")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "Denis%40123")
 POSTGRES_DB = os.getenv("POSTGRES_DB", "digcom")
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
 POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")

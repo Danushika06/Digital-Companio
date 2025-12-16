@@ -88,3 +88,17 @@ def add_message(chat_id: str, role: str, content: str):
     
     message = {"role": role, "parts": [content]}
     redis_client.rpush(f"chat:{chat_id}:messages", json.dumps(message))
+
+# --- User Profile (Personalization) ---
+
+def get_user_profile(user_id: str) -> str:
+    """Retrieve the personalized profile string for a user."""
+    if not redis_client:
+        return ""
+    return redis_client.get(f"user:{user_id}:profile") or ""
+
+def update_user_profile(user_id: str, profile_data: str):
+    """Update the personalized profile string for a user."""
+    if not redis_client:
+        return
+    redis_client.set(f"user:{user_id}:profile", profile_data)
